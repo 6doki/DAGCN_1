@@ -171,25 +171,40 @@ def masked_mae_np(preds, labels, null_val=np.nan):
         return np.mean(mae)
 
 
+# def masked_mape_np(preds, labels, null_val=np.nan):
+#     if not isinstance(preds, np.ndarray):
+#         preds = preds.cpu().numpy()
+#         labels = labels.cpu().numpy()
+#     with np.errstate(divide='ignore', invalid='ignore'):
+#         if np.isnan(null_val):
+#             mask = ~np.isnan(labels)
+#         else:
+#             # mask = np.not_equal(labels, null_val)
+#             mask = np.where(labels > null_val, True, False)
+#         # mask = mask.astype('float32')
+#         # mask /= np.mean(mask)
+#         # mape = np.abs(np.divide(np.subtract(preds, labels).astype('float32'), labels))
+#         # mape = np.nan_to_num(mask * mape)
+#         # return np.mean(mape)
+#         preds = preds[mask]
+#         labels = labels[mask]
+#         return np.mean(np.absolute(np.divide((labels - preds), labels)))
+
 def masked_mape_np(preds, labels, null_val=np.nan):
-    if not isinstance(preds, np.ndarray):
-        preds = preds.cpu().numpy()
-        labels = labels.cpu().numpy()
+    # 强制将可能漏网的 PyTorch tensor 转换为 numpy
+    if torch.is_tensor(preds):
+        preds = preds.detach().cpu().numpy()
+    if torch.is_tensor(labels):
+        labels = labels.detach().cpu().numpy()
+
     with np.errstate(divide='ignore', invalid='ignore'):
         if np.isnan(null_val):
             mask = ~np.isnan(labels)
         else:
-            # mask = np.not_equal(labels, null_val)
             mask = np.where(labels > null_val, True, False)
-        # mask = mask.astype('float32')
-        # mask /= np.mean(mask)
-        # mape = np.abs(np.divide(np.subtract(preds, labels).astype('float32'), labels))
-        # mape = np.nan_to_num(mask * mape)
-        # return np.mean(mape)
         preds = preds[mask]
         labels = labels[mask]
         return np.mean(np.absolute(np.divide((labels - preds), labels)))
-
 
 class Evaluator(object):
     '''
@@ -207,8 +222,6 @@ class Evaluator(object):
         :param output: [n_samples, 12, n_nodes, n_features]      预测值
         :param groud_truth: [n_samples, 12, n_nodes, n_features] 真实值
         : single 单维度
-
-        :return: dict [str -> float]
         """
         # print('进入evaluator.py中的_evaluate方法：')
         if out_catagory == 'multi':  # 输出类别
@@ -244,18 +257,18 @@ class Evaluator(object):
                     scores['masked_RMSE'][f'horizon-{step}'] = masked_rmse_np(y_pred, y_true, null_val=0.0)
                     scores['masked_MAPE'][f'horizon-{step}'] = masked_mape_np(y_pred, y_true, null_val=0.0) * 100.0
                     # scores['node_wise_PCC'][f'horizon-{step}'] = node_pcc_np(y_pred.swapaxes(1, -1).reshape((-1, node)),y_true.swapaxes(1, -1).reshape((-1, node)))
-                    # scores['PCC'][f'horizon-{step}'] = pcc_np(y_pred, y_true)
+                    scores['PCC'][f'horizon-{step}'] = pcc_np(y_pred, y_true)
                 '''所有时间步'''
                 scores['masked_MAE']['all'] = masked_mae_np(output, groud_truth, null_val=0.0)
                 scores['masked_RMSE']['all'] = masked_rmse_np(output, groud_truth, null_val=0.0)
                 scores['masked_MAPE']['all'] = masked_mape_np(output, groud_truth, null_val=0.0) * 100.0
-                # scores['PCC']['all'] = pcc_np(output, groud_truth)
+                scores['PCC']['all'] = pcc_np(output, groud_truth)
                 # scores["node_pcc"]['all'] = node_pcc_np(output, groud_truth)
             else:
                 '''
                 未启用mask，计算指标时候不会忽略数据中的空值
                 '''
-                # print("--------------没有启用mask！！！！------------------")
+                print("--------------没有启用mask！！！！------------------")
                 if output.shape != groud_truth.shape:
                     groud_truth = np.expand_dims(groud_truth[..., 0], axis=-1)
                 assert output.shape == groud_truth.shape, f'{output.shape}, {groud_truth.shape}'
@@ -271,7 +284,7 @@ class Evaluator(object):
                     # scores['MAPE'][f'horizon-{step}'] = mape_np(y_pred, y_true, null_val=0.01) * 100.0
                     scores['masked_MAPE'][f'horizon-{step}'] = masked_mape_np(y_pred, y_true, null_val=0.01) * 100.0
                     # scores['StemGNN_MAPE'][f'horizon-{step}'] = stemgnn_mape(y_pred, y_true) * 100.0
-                    # scores['PCC'][f'horizon-{step}'] = pcc_np(y_pred, y_true)
+                    scores['PCC'][f'horizon-{step}'] = pcc_np(y_pred, y_true)
                     # scores['node_wise_PCC'][f'horizon-{step}'] = node_pcc_np(y_pred.swapaxes(1, -1).reshape((-1, node)),y_true.swapaxes(1, -1).reshape((-1, node)))
                 scores['MAE']['all'] = mae_np(output, groud_truth)
                 scores['RMSE']['all'] = rmse_np(output, groud_truth)
@@ -282,7 +295,7 @@ class Evaluator(object):
                 # scores['MAPE']['all'] = masked_mape_np(output, groud_truth, null_val=0.01) * 100.0
                 scores['masked_MAPE']['all'] = masked_mape_np(output, groud_truth, null_val=0.01) * 100.0
                 # scores['StemGNN_MAPE']['all'] = stemgnn_mape(output, groud_truth) * 100.0
-                # scores['PCC']['all'] = pcc_np(output, groud_truth)
+                scores['PCC']['all'] = pcc_np(output, groud_truth)
                 # scores['node_wise_PCC']['all'] = node_pcc_np(output.swapaxes(2, -1).reshape((-1, node)),
                 #                                              groud_truth.swapaxes(2, -1).reshape((-1, node)))
 
@@ -304,11 +317,15 @@ class Evaluator(object):
         return scores
 
     def evaluate(self, output, groud_truth):  # 确保输入的张量为numpy数组，再调用_evaluate方法进行评估
-        # print('进入evaluator.py中的evaluate（从这个方法进入_evaluate方法）：')
-        if not isinstance(output, np.ndarray):
-            output = output.cpu().numpy()
-        if not isinstance(groud_truth, np.ndarray):
-            groud_truth = groud_truth.cpu().numpy()
+        # 增加 detach()，确保即使有梯度也能安全转换
+        if torch.is_tensor(output):
+            output = output.detach().cpu().numpy()
+        if torch.is_tensor(groud_truth):
+            groud_truth = groud_truth.detach().cpu().numpy()
+        # if not isinstance(output, np.ndarray):
+        #     output = output.cpu().numpy()
+        # if not isinstance(groud_truth, np.ndarray):
+        #     groud_truth = groud_truth.cpu().numpy()
         scores=self._evaluate(output, groud_truth, self.mask, self.out_catagory)
         self.plot_metrics(scores)
         # return self._evaluate(output, groud_truth, self.mask, self.out_catagory)

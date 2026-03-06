@@ -6,3 +6,18 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
+
+Data/PEMSD4/
+Data/PEMSD8/
+model_DAGCN/data/
+origin_data/
+raw_data/data_test_0206/
+raw_data/PEMS03/
+raw_data/PEMS04/
+raw_data/PEMS04_10/
+raw_data/PEMS04_10_NAN/
+raw_data/PEMS04_30/
+raw_data/PEMS08/
+raw_data/PEMS08_10/
+raw_data/PEMS08_30/
+raw_data/PEMS0810_2025/

@@ -70,8 +70,8 @@ def get_logger(root, name=None, debug=True):
 class MultiStepExecutor(object):
     def __init__(self, config, model):
         self.config = config
-        self.evaluator = Evaluator(config) # 调用evaluator.py中的Evaluator类创建一个评估器对象
-        _device = self.config.get('device', torch.device('cpu')) # 从config配置中获取device，并且将模型移动到指定的设备上
+        self.evaluator = Evaluator(config)  # 调用evaluator.py中的Evaluator类创建一个评估器对象
+        _device = self.config.get('device', torch.device('cpu'))  # 从config配置中获取device，并且将模型移动到指定的设备上
         self.device = torch.device(_device)
         self.model = model.to(self.device)
         self.cache_dir = os.path.join('cache/model_cache')
@@ -127,12 +127,12 @@ class MultiStepExecutor(object):
 
             for iter, (x,y) in enumerate(train_data.get_iterator()):
                 '''遍历训练数据集的迭代器，(x, y) 分别是输入和目标（标签）数据'''
-                self.model.train() # 将模型设置为训练模式，启用 dropout 和 batch normalization
-                self.model.zero_grad() # 清空模型的梯度，以便开始新的反向传播
+                self.model.train()  # 将模型设置为训练模式，启用 dropout 和 batch normalization
+                self.model.zero_grad()  # 清空模型的梯度，以便开始新的反向传播
                 '''将输入 x 和目标 y 转换为 PyTorch 张量，并移动到指定的设备'''
                 trainx = torch.Tensor(x).to(self.device)  # [batch_size, window, num_nodes, dim]: (64, 12, N, 1)
                 trainy = torch.Tensor(y).to(self.device)  # [batch_size, horizon, num_nodes, dim]
-                output = self.model(trainx) # 获取将输入x送入模型后的输出
+                output = self.model(trainx)
                 '''将模型输出output与目标y反归一化之后，计算其损失'''
                 loss = self.criterion(self.scaler.inverse_transform(output), 
                     self.scaler.inverse_transform(trainy))
@@ -219,6 +219,35 @@ class MultiStepExecutor(object):
 
         self._logger.info(f'Loss plot saved to {save_path}')
 
+    def plot_prediction_curve(self, preds, realy, node_idx=0, start_step=0, length=288, horizon_idx=0):
+        """
+        绘制具体节点的真实值与预测值对比曲线
+        preds / realy 形状: (n_samples, horizon, num_nodes, 1)
+        length=288 刚好是一天的步数 (5分钟一次)
+        """
+        import matplotlib.pyplot as plt
+        import os
+
+        # 提取真实值和预测值的一维序列
+        truth_seq = realy[start_step: start_step + length, horizon_idx, node_idx, 0]
+        pred_seq = preds[start_step: start_step + length, horizon_idx, node_idx, 0]
+
+        plt.figure(figsize=(12, 4))
+        plt.plot(truth_seq, label='Ground Truth', color='blue', linewidth=1.5)
+        plt.plot(pred_seq, label='Prediction (DAGCN)', color='red', linestyle='--', linewidth=1.5)
+        plt.title(f'Traffic Flow Prediction at Node {node_idx} (Horizon {horizon_idx + 1})')
+        plt.xlabel('Time Steps (5 min/step)')
+        plt.ylabel('Traffic Flow')
+        plt.legend()
+        plt.grid(True, linestyle=':', alpha=0.6)
+
+        save_dir = 'png'
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f'pred_curve_node{node_idx}.png')
+        plt.savefig(save_path, bbox_inches='tight')
+        plt.close()
+        self._logger.info(f'Prediction curve saved to {save_path}')
+
     def evaluate(self, test_data):
         """
         use model to test data
@@ -259,6 +288,35 @@ class MultiStepExecutor(object):
             step_dict = res_scores[_index]
             for j, k in step_dict.items():
                 self._logger.debug("{} : {}".format(j, k.item()))
+
+        # 新增评估
+        self.plot_prediction_curve(preds, realy, node_idx=10, horizon_idx=0)
+        self.plot_prediction_curve(preds, realy, node_idx=10, horizon_idx=11)
+
+        # 【新增：计算每个节点的平均 MAE 并绘制直方图】
+        # preds/realy shape: (samples, horizon=12, nodes, 1)
+        # 我们对所有样本 (axis=0) 和所有时间步 (axis=1) 求平均绝对误差
+        abs_error = np.abs(preds[..., 0] - realy[..., 0])  # shape: (samples, horizon, nodes)
+        node_mae = np.mean(abs_error, axis=(0, 1))  # shape: (nodes,)
+
+        plt.figure(figsize=(8, 5))
+        plt.hist(node_mae, bins=30, color='skyblue', edgecolor='black', alpha=0.7)
+        plt.axvline(np.mean(node_mae), color='red', linestyle='dashed', linewidth=2,
+                    label=f'Mean MAE: {np.mean(node_mae):.2f}')
+        plt.title('Distribution of MAE Across All Nodes')
+        plt.xlabel('Node Mean Absolute Error (MAE)')
+        plt.ylabel('Number of Nodes')
+        plt.legend()
+        plt.grid(True, linestyle=':', alpha=0.6)
+
+        dist_path = os.path.join('png', 'node_mae_distribution.png')
+        plt.savefig(dist_path, bbox_inches='tight')
+        plt.close()
+        self._logger.info(f'Node MAE distribution saved to {dist_path}')
+
+        # 可选：打印出最难预测的5个节点（MAE最大）
+        worst_nodes = np.argsort(node_mae)[-5:]
+        self._logger.info(f'Top 5 hardest nodes to predict (Highest MAE): {worst_nodes}')
         
         
 

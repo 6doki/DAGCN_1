@@ -1,0 +1,20 @@
+{
+  "filename": "missing_data_generate/PEMS08_missing_30.npz",
+
+  "adj_type": "connectivity",
+  "//": "adj_type be  distance or connectivity",
+  "adj_filename": "raw_data/PEMS08_30/distance.csv",
+  "dtw_file": "raw_data/PEMS08_30/dtw.npy",
+
+  "input_dim": 1,
+  "output_dim": 1,
+
+  "seq_len": 17856,
+  "num_nodes": 170,
+  "train_rate": 0.6,
+  "eval_rate": 0.2,
+  "feature_dim": 1,
+  "mask": false,
+  "adj_percent": 0.02
+
+}

@@ -36,7 +36,7 @@ def compute_laplacian_pe(adj_mx, max_freqs=10):
     L = np.eye(N) - sym_adj
 
     # 3. 特征分解 (Eigendecomposition)
-    # 使用 scipy 计算最小的 k 个特征值和特征向量
+    # 使用 scipy 计算最小的 k 个特征值和特征向量，这些特征向量不仅包含了图的频率信息，还天然地构成了节点在图谱空间中的坐标
     # k = max_freqs
     try:
         # eigsh 用于稀疏/实对称矩阵，'SM' 表示 Smallest Magnitude (最小特征值)
@@ -44,6 +44,7 @@ def compute_laplacian_pe(adj_mx, max_freqs=10):
         # 第一个特征向量通常是常数向量 (对应特征值0)，一般丢弃或保留均可
         # 这里取后 max_freqs 个
         pe = eigenvecs[:, 1:]
+        print("特征向量生成！")
     except:
         # 如果特征分解失败 (极少情况)，用随机初始化兜底
         print("Warning: Laplacian decomposition failed, using random PE.")
@@ -58,7 +59,7 @@ class AdvancedDataEmbedding(nn.Module):
     包含：Input Projection + Laplacian PE + Learnable Temporal/Spatial Embedding
     """
 
-    def __init__(self, input_dim, embed_dim, adj_mx, num_nodes, dropout=0.1):
+    def __init__(self, input_dim, embed_dim, adj_mx, num_nodes, pe_dim=16,dropout=0.1):
         super(AdvancedDataEmbedding, self).__init__()
 
         # 1. 原始输入投影 (1 -> 64)
@@ -66,7 +67,7 @@ class AdvancedDataEmbedding(nn.Module):
 
         # 2. 拉普拉斯位置编码 (Spatial Structure)
         # 预先计算好 PE
-        self.pe_dim = 8  # 取前8个特征向量
+        self.pe_dim = pe_dim  # 取前8个特征向量 超参数 后续调整
         pe = compute_laplacian_pe(adj_mx, max_freqs=self.pe_dim)
         # 注册为 buffer，不参与梯度更新，但随模型移动设备
         self.register_buffer('laplacian_pe', pe)
@@ -83,16 +84,16 @@ class AdvancedDataEmbedding(nn.Module):
         """
         x: (B, T, N, Cin)
         """
-        # A. 基础特征映射
+        # A. 基础特征映射 val_emb
         val_emb = self.input_proj(x)  # (B, T, N, D)
 
-        # B. 注入拉普拉斯空间信息
+        # B. 注入拉普拉斯空间信息 pe_feat
         # laplacian_pe: (N, 8) -> (N, D)
         pe_feat = self.pe_proj(self.laplacian_pe)
         # 扩展维度以相加: (1, 1, N, D)
         pe_feat = pe_feat.unsqueeze(0).unsqueeze(0)
 
-        # C. 注入可学习节点嵌入
+        # C. 注入可学习节点嵌入 node_feat
         node_feat = self.node_emb.unsqueeze(0).unsqueeze(0)  # (1, 1, N, D)
 
         # D. 融合
@@ -179,9 +180,6 @@ class DelayAware_gcn_operation(nn.Module):
         self.num_patterns = patterns.shape[0]
         self.pattern_len = patterns.shape[1]
 
-        # # 投影层:将输入特征映射到pattern相同的维度以便计算相似度
-        # self.query_proj = nn.Linear(in_dim, self.pattern_len)
-
         # 模式特征提取层：将匹配到的Pattern映射回输入特征维度
         # self.pattern_conv = nn.Linear(self.pattern_len, in_dim)
         self.pattern_embed = nn.Linear(self.pattern_len, in_dim)
@@ -248,7 +246,7 @@ class DelayAware_gcn_operation(nn.Module):
 
     def forward(self, x, pattern_weights, mask=None):
         """
-        :param x: (3*N, B, Cin)
+        :param x: (4*N, B, Cin)
         :param pattern_weights: (B, N, K) 从最顶层传下来的权重
         """
         # 1. 准备 Pattern 特征
@@ -262,9 +260,6 @@ class DelayAware_gcn_operation(nn.Module):
         # matmul -> (B, N, Cin)
 
         # 3. 维度对齐
-        # GCN 的输入 x 是 (3N, B, Cin)，这里的 3N 是 (N_t, N_t+1, N_t+2)
-        # 我们假设节点的 Pattern 在这 3 个时间步内是共享的
-        # 所以我们需要把 delay_feat (B, N, Cin) 扩展为 (B, 3N, Cin)
         total_gcn_nodes = x.shape[0]  # 获取当前的节点总数 (例如 1228)
         original_nodes = pattern_weights.shape[1]  # 获取原始节点数 (例如 307)
 
@@ -277,13 +272,13 @@ class DelayAware_gcn_operation(nn.Module):
         # 动态复制
         delay_feat = delay_feat.repeat(1, repeat_factor, 1)
 
-        # 调整为 (3N, B, Cin) 以匹配 x
+        # 调整为 (4N, B, Cin) 以匹配 x
         delay_feat = delay_feat.permute(1, 0, 2)
 
         # 4. 融合
         # 拼接
         combined = torch.cat([x, delay_feat], dim=-1)
-        # 计算门控 (B, 3N, Cin)
+        # 计算门控 (B, 4N, Cin)
         z = torch.sigmoid(self.fusion_gate(combined))
 
         # 残差融合：原特征 + 门控 * 延迟特征
@@ -474,14 +469,14 @@ class STSGCL(nn.Module):
         need_concat = []
         batch_size = x.shape[0]
 
-        # 这是一个滑动窗口循环，比如 T=12, strides=3, 循环会执行 T-3+1 次
+        # 这是一个滑动窗口循环，比如 T=12, strides=4, 循环会执行 T-4+1 次
         for i in range(self.history - self.strides + 1):
-            t = x[:, i: i + self.strides, :, :]  # 切片: 取局部 3 个时间步
+            t = x[:, i: i + self.strides, :, :]  # 切片: 取局部 4 个时间步 t形状(B,4,N,64)
 
-            # 变形为 (B, 3N, C) 送入 GCN
+            # 变形为 (B, 4N, 64) 送入 GCN
             t = torch.reshape(t, shape=[batch_size, self.strides * self.num_of_vertices, self.in_dim])
 
-            # GCN 运算
+            # GCN 运算:变形为(4N,B,64)
             t = self.STSGCMS[i](t.permute(1, 0, 2), pattern_weights, mask)
 
             # 还原形状 (N, B, Cout) -> (B, N, Cout)
@@ -651,6 +646,8 @@ class DAGCN(nn.Module):
         spatial_emb = self.config.get("spatial_emb", True)  # True 使用空间嵌入
         horizon = self.config.get("horizon", 24)    # 12 输出的预测时间步长
         strides = self.config.get("strides", 4)  # 4 滑动窗口步长 用于控制每次处理的时间步数量
+        # pe_dim = self.config.get("pe_dim", 8)
+        pe_dim = self.config.get("pe_dim", 16)
         # pattern = self.data_feature["pattern"]
 
         # 将局部变量存储为实例属性
@@ -693,10 +690,10 @@ class DAGCN(nn.Module):
             input_dim=in_dim,
             embed_dim=first_layer_embedding_size,
             adj_mx=spatial_adj,  # [修改] 传入切片后的 307x307 矩阵
+            pe_dim=pe_dim,
             num_nodes=self.num_of_vertices,
             dropout=0.1
         )
-        # ----------------------------------------
 
         self.STSGCLS = nn.ModuleList()
         self.STSGCLS.append(

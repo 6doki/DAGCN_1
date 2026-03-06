@@ -197,18 +197,11 @@ def construct_adj_fusion(A, A_dtw, steps, Lag_mx):
     return adj  # (4N,4N)
 
 
-
-'''
-用于构建时空图卷积神经网络（STFGNN）的数据集
-（1）数据加载
-（2）时间相似性矩阵的构建
-（3）邻接矩阵构建
-（4）获取数据特征
-'''
 class COMPUTE_delay(MultiStepDataset):
     '''
     空间图：继承于父类MultiStepDataset
     时间图：DTW生成
+    可以直接使用MultiStepDataset生成的data：train_loader/valid_loader/test_loader/scaler/num_batches
     '''
     def __init__(self, config):
         super().__init__(config)
@@ -387,21 +380,12 @@ class COMPUTE_delay(MultiStepDataset):
 
     # 构建融合后的graph： （4N,4N)
     def _construct_adj(self):
-        """
-        构建local 时空图
-        :param A: np.ndarray, adjacency matrix, shape is (N, N)
-        :param steps: 选择几个时间步来构建图
-        :return: new adjacency matrix: csr_matrix, shape is (N * steps, N * steps)
-        """
-
-        print("------------------进入COMPUTE_delay类_construct_adj方法：-------------------")
+        print("------------------进入COMPUTE_delay类_construct_adj方法(开始构造空间图和时间图)：-------------------")
         self._construct_dtw()  # 构建self.dtw: (N,N)  时间相似性图
         print("第一步：调用COMPUTE_delay类_construct_dtw方法 生成时间相似图")
-        print("self.adj_mx.shape",self.adj_mx.shape)
-        print("self.dtw.shape", self.dtw.shape)
+        print("self.adj_mx.shape（空间图）",self.adj_mx.shape)
+        print("self.dtw.shape（时间图）", self.dtw.shape)
         adj_mx = construct_adj_fusion(self.adj_mx, self.dtw, self.strides, self.lag_mx)  # (4N,4N)
-        # adj_mx = construct_adj_fusion(self.adj_mx, self.adj_mx, self.strides)  # (4N,4N)
-        # adj_mx = construct_adj_fusion_k(self.adj_mx, self.dtw, self.strides)  # (3N,3N)
         print("The shape of localized adjacency matrix: {}".format(adj_mx.shape), flush=True)
         print("融合之后的大矩阵：",adj_mx)
         print("------------------退出COMPUTE_delay类_construct_adj方法：-------------------")

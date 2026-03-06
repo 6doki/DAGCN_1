@@ -95,10 +95,11 @@ class MultiStepDataset(object):
 
     def ensure_adj_mat(self):
         '''
-        如果邻接矩阵文件不存在，代码会根据传感器之间的距离数据（存储在distances_file中）使用get_adjacency_matrix函数来生成邻接矩阵
+        如果邻接矩阵文件不存在，代码会根据传感器之间的距离数据（存储在distances_file中）使用get_adjacency_matrix函数来生成空间邻接矩阵
         :return:邻接矩阵（被保存为pkl文件格式）
         '''
         if os.path.exists(self.adj_filename):
+            print(f"空间邻接矩阵已经存在：{self.adj_filename}")
             return
         else:
             print("——————————————————开始生成空间图的邻接矩阵！！！！！——————————————————")
@@ -143,7 +144,8 @@ class MultiStepDataset(object):
             print("检测到file_name文件扩展名是：csv ，加载数据文件！")
         elif file_name[-3:] == "npz":
             mid_dat = np.load(file_name)
-            self.rawdat = mid_dat[mid_dat.files[0]]#[:, :, 0]  # (26208,358)
+            self.rawdat = mid_dat[mid_dat.files[0]]
+            print("读取npz文件中的第一个数组生成了self.rawdat,其形状是：",self.rawdat.shape)  # PEMS04:(16992,307,3)
             if len(self.rawdat.shape) == 2:
                 self.rawdat = np.expand_dims(self.rawdat, axis=-1)
             print("检测到file_name文件扩展名是：npz ，加载数据文件！")
@@ -267,24 +269,34 @@ class MultiStepDataset(object):
             y_t = data[t + y_offsets, ...]
             x.append(x_t)
             y.append(y_t)
-        x = np.stack(x, axis=0)  # (num_samples,T_x,num_nodes,D)
-        y = np.stack(y, axis=0)  # (num_samples,T_y,num_nodes,D)
+        x = np.stack(x, axis=0)  # (num_samples,T_x,num_nodes,D) 即PEMS04输入样本对X:(16957,12,307,3)
+        y = np.stack(y, axis=0)  # (num_samples,T_y,num_nodes,D) 即PEMS04输出样本对Y:(16957,24,307,3)
 
         return x, y
 
     def _generate_train_val_test(self):
+        print("开始将连续的数据集序列变成一个个独立样本..........")
         seq_length_x, seq_length_y = self.window, self.horizon  # 第一个是输入长度（窗口大小） 第二个是输出长度（预测视窗）
-        x_offsets = np.arange(-(seq_length_x - 1), 1, 1)  # narray: (-11,..,0)
-        y_offsets = np.arange(1, (seq_length_y + 1), 1)  # narray: (1,..,12)
+        x_offsets = np.arange(-(seq_length_x - 1), 1, 1)
+        y_offsets = np.arange(1, (seq_length_y + 1), 1)
         x, y = self._generate_graph_seq2seq_io_data(self.rawdat, x_offsets, y_offsets, self.add_time_in_day, self.add_day_in_week)
-        print("x shape: ", x.shape, ", y shape: ", y.shape)
-        num_samples = x.shape[0]  # 样本总数
+        print("原始数据self.rawdat shape: ", self.rawdat.shape)
+        print("原始数据序列生成的输入样本对x.shape", x.shape, ", 原始数据序列生成的输出样本对y shape: ", y.shape)
+        num_samples = x.shape[0]  # 样本总数 PEMS04:16957
         num_val = round(num_samples * self.valid_rate)  # 验证集样本数
         print("验证集样本数:", num_val)
         num_train = round(num_samples * self.train_rate)  # 训练集样本数
         print("训练集样本数:", num_train)
         num_test = num_samples - num_train - num_val  # 测试集样本数
         print("测试集样本数:", num_test)
+
+        # 输出训练集、验证集、测试集的形状
+        print("*************************************************")
+        print("训练集 x shape:", x[:num_train].shape, ", 训练集 y shape:", y[:num_train].shape)
+        print("验证集 x shape:", x[num_train:num_train + num_val].shape, ", 验证集 y shape:",
+              y[num_train:num_train + num_val].shape)
+        print("测试集 x shape:", x[num_train + num_val:].shape, ", 测试集 y shape:", y[num_train + num_val:].shape)
+        print("*************************************************")
         '''
         self.train:     [x[:num_train], y[:num_train]]
         self.train[0]:  x[:num_train] 输入序列
@@ -302,9 +314,6 @@ class MultiStepDataset(object):
         x_test, y_test = self.test[0], self.test[1]      # 测试集的输入序列和输出序列
         self.scaler = self._get_scalar(x_train[..., :self.output_dim],
                                        y_train[..., :self.output_dim])  # std标准化（Z-score）
-        '''
-        对输入数据和输出数据进行标准化处理的目的是加速模型的训练并且提高模型的稳定性
-        '''
         x_train[..., :self.output_dim] = self.scaler.transform(x_train[..., :self.output_dim])
         y_train[..., :self.output_dim] = self.scaler.transform(y_train[..., :self.output_dim])
         x_valid[..., :self.output_dim] = self.scaler.transform(x_valid[..., :self.output_dim])
@@ -312,6 +321,7 @@ class MultiStepDataset(object):
         x_test[..., :self.output_dim] = self.scaler.transform(x_test[..., :self.output_dim])
         y_test[..., :self.output_dim] = self.scaler.transform(y_test[..., :self.output_dim])
 
+        '''数据集三个特征（流量、占有率、速度）只选取流量一个特征'''
         data['train_loader'] = DataLoader(x_train[..., :self.input_dim], y_train[..., :self.output_dim],
                                           self.batch_size)
         data['valid_loader'] = DataLoader(x_valid[..., :self.input_dim], y_valid[..., :self.output_dim],

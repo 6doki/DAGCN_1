@@ -52,7 +52,7 @@ if __name__ == '__main__':
     #  查看所有属性及其值
     # print("Dataset Attributes:", dataset.__dict__)
 
-    data_feature = dataset.get_data_feature()   # 字典，key包括：scaler, adj_mx, num_batches
+    data_feature = dataset.get_data_feature()   # 字典，key包括：scaler, adj_mx, num_batches, patterns
     # print("data Feature Size:", data_feature)
 
     # model_cache_file = 'cache/model_cache/PEMS0410_STFGNN.m'
@@ -63,13 +63,17 @@ if __name__ == '__main__':
     # model_cache_file = 'cache/model_cache/PEMS04_DAGCN_0126_epoch20.m'
     # model_cache_file = 'cache/model_cache/PEMS04_DAGCN_0126_epoch200.m'
     # model_cache_file = 'cache/model_cache/PEMS04_DAGCN_0127_epoch50.m'
-    model_cache_file = 'cache/model_cache/PEMS04_DAGCN_0128_epoch200.m'
+    # model_cache_file = 'cache/model_cache/PEMS04_DAGCN_0128_epoch200.m'
+    # model_cache_file = 'cache/model_cache/PEMS04_DAGCN_0205_epoch50.m'
+    # model_cache_file = 'cache/model_cache/PEMS04_DAGCN_0302_epoch50.m'
+    # model_cache_file = 'cache/model_cache/PEMS04_DAGCN_0303_epoch50.m'
+    model_cache_file = 'cache/model_cache/PEMS04_DAGCN_0306_epoch50_evaluator_png.m'
 
     # model = STFGNN(config, data_feature)
     model = DAGCN(config, data_feature)
 
     executor = STFGNNExecutor(config, model)   # 使用自己定义的评估模型
-    train = True  # 标识是否需要重新训练
+    train = False  # 标识是否需要重新训练
 
     if train or not os.path.exists(model_cache_file):
         executor.train(train_data, valid_data)

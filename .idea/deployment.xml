@@ -2,6 +2,20 @@
 <project version="4">
   <component name="PublishConfigData" autoUpload="Always" serverName="cmgcn_second_gpu1" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
+      <paths name="T640 (project level)">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="T650">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/xuke/zzh/CMGCN_1001" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="cmgcn_second">
         <serverdata>
           <mappings>

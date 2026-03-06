@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="f5b75f6b-0e04-4a4b-9711-1581b4077643" name="T650">
+        <fileTransfer accessType="SFTP" host="10.64.68.88" port="2343" sshConfigId="8382eb68-6156-4d04-8332-2bdea8b80b89" sshConfig="xuke@10.64.68.88:2343 key" keyPair="true">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+      <webServer id="cbc0ed2f-b275-42d0-bbca-1bd728ee4a93" name="T640 (project level)">
+        <fileTransfer accessType="SFTP" host="115.157.197.188" port="41564" sshConfigId="6ef342c5-1d86-4c5d-b72e-ad61c0a276e9" sshConfig="root@115.157.197.188:41564 key" keyPair="true">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
